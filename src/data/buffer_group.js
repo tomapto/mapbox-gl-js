@@ -36,6 +36,7 @@ class BufferGroup {
 
         this.segments = arrays.segments;
         this.segments2 = arrays.segments2;
+        this.terrainArray = arrays.terrainArray;
 
         for (const segments of [this.segments, this.segments2]) {
             for (const segment of segments || []) {
