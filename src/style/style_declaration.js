@@ -35,6 +35,8 @@ class StyleDeclaration {
             }, {
                 type: 'number'
             });
+        } else if (!this.isZoomConstant) {
+            this.stopZoomLevels = this.value.stops.map(stop => stop[0]);
         }
     }
 

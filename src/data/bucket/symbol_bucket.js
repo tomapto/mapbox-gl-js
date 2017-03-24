@@ -69,8 +69,9 @@ const symbolInterfaces = {
     }
 };
 
-function addVertex(array, x, y, ox, oy, tx, ty, minzoom, maxzoom, labelminzoom, labelangle) {
-    array.emplaceBack(
+function addVertex(array, x, y, ox, oy, tx, ty, sizeData, minzoom, maxzoom, labelminzoom, labelangle) {
+    array.emplaceBack.apply(array,
+        [
             // a_pos_offset
             x,
             y,
@@ -85,7 +86,9 @@ function addVertex(array, x, y, ox, oy, tx, ty, minzoom, maxzoom, labelminzoom, 
             (labelminzoom || 0) * 10, // labelminzoom
             labelangle, // labelangle
             (minzoom || 0) * 10, // minzoom
-            Math.min(maxzoom || 25, 25) * 10); // maxzoom
+            Math.min(maxzoom || 25, 25) * 10 // maxzoom
+        ].concat(sizeData || []) // a_size
+    );
 }
 
 function addCollisionBoxVertex(layoutVertexArray, point, extrude, maxZoom, placementZoom) {
@@ -137,15 +140,50 @@ class SymbolBucket {
         this.index = options.index;
         this.sdfIcons = options.sdfIcons;
         this.iconsNeedLinear = options.iconsNeedLinear;
+        this.fontstack = options.fontstack;
+        this.textSizeCoveringZoomStops = options.textSizeCoveringZoomStops;
+        this.iconSizeCoveringZoomStops = options.iconSizeCoveringZoomStops;
         this.adjustedTextSize = options.adjustedTextSize;
         this.adjustedIconSize = options.adjustedIconSize;
-        this.fontstack = options.fontstack;
+
+        this.symbolInterfaces = {
+            glyph: util.extend({}, symbolInterfaces.glyph, {
+                layoutAttributes: [].concat(symbolInterfaces.glyph.layoutAttributes)
+            }),
+            icon: util.extend({}, symbolInterfaces.icon, {
+                layoutAttributes: [].concat(symbolInterfaces.icon.layoutAttributes)
+            }),
+            collisionBox: util.extend({}, symbolInterfaces.collisionBox, {
+                layoutAttributes: [].concat(symbolInterfaces.collisionBox.layoutAttributes)
+            })
+        };
+
+        const layer = this.layers[0];
+        if (layer.isLayoutValueSourceFunction('text-size')) {
+            this.symbolInterfaces.glyph.layoutAttributes.push({
+                name: 'a_size', components: 1, type: 'Uint16'
+            });
+        } else if (layer.isLayoutValueCompositeFunction('text-size')) {
+            this.symbolInterfaces.glyph.layoutAttributes.push({
+                name: 'a_size', components: 3, type: 'Uint16'
+            });
+        }
+
+        if (layer.isLayoutValueSourceFunction('icon-size')) {
+            this.symbolInterfaces.icon.layoutAttributes.push({
+                name: 'a_size', components: 2, type: 'Uint16'
+            });
+        } else if (layer.isLayoutValueCompositeFunction('text-size')) {
+            this.symbolInterfaces.icon.layoutAttributes.push({
+                name: 'a_size', components: 3, type: 'Uint16'
+            });
+        }
 
         if (options.arrays) {
             this.buffers = {};
             for (const id in options.arrays) {
                 if (options.arrays[id]) {
-                    this.buffers[id] = new BufferGroup(symbolInterfaces[id], options.layers, options.zoom, options.arrays[id]);
+                    this.buffers[id] = new BufferGroup(this.symbolInterfaces[id], options.layers, options.zoom, options.arrays[id]);
                 }
             }
         }
@@ -244,6 +282,8 @@ class SymbolBucket {
             layerIds: this.layers.map((l) => l.id),
             sdfIcons: this.sdfIcons,
             iconsNeedLinear: this.iconsNeedLinear,
+            textSizeCoveringZoomStops: this.textSizeCoveringZoomStops,
+            iconSizeCoveringZoomStops: this.iconSizeCoveringZoomStops,
             adjustedTextSize: this.adjustedTextSize,
             adjustedIconSize: this.adjustedIconSize,
             fontstack: this.fontstack,
@@ -261,7 +301,7 @@ class SymbolBucket {
     }
 
     createArrays() {
-        this.arrays = util.mapObject(symbolInterfaces, (programInterface) => {
+        this.arrays = util.mapObject(this.symbolInterfaces, (programInterface) => {
             return new ArrayGroup(programInterface, this.layers, this.zoom);
         });
     }
@@ -269,19 +309,31 @@ class SymbolBucket {
     prepare(stacks, icons) {
         this.symbolInstances = [];
 
-        // To reduce the number of labels that jump around when zooming we need
-        // to use a text-size value that is the same for all zoom levels.
-        // This calculates text-size at a high zoom level so that all tiles can
-        // use the same value when calculating anchor positions.
-        this.adjustedTextMaxSize = this.layers[0].getLayoutValue('text-size', {zoom: 18});
-        this.adjustedTextSize = this.layers[0].getLayoutValue('text-size', {zoom: this.zoom + 1});
-        this.adjustedIconMaxSize = this.layers[0].getLayoutValue('icon-size', {zoom: 18});
-        this.adjustedIconSize = this.layers[0].getLayoutValue('icon-size', {zoom: this.zoom + 1});
-
         const tileSize = 512 * this.overscaling;
         this.tilePixelRatio = EXTENT / tileSize;
         this.compareText = {};
         this.iconsNeedLinear = false;
+
+        const layer = this.layers[0];
+        if (
+            layer.isLayoutValueFeatureConstant('text-size') &&
+            !layer.isLayoutValueZoomConstant('text-size')
+        ) {
+            this.adjustedTextSize = layer.getLayoutValue('text-size', {zoom: this.zoom + 1});
+        }
+        if (!layer.isLayoutValueZoomConstant('text-size')) {
+            this.textSizeCoveringZoomStops = this.layers[0].getLayoutValueCoveringZoomStops('text-size', this.zoom, this.zoom + 1);
+        }
+
+        if (
+            layer.isLayoutValueFeatureConstant('icon-size') &&
+            !layer.isLayoutValueZoomConstant('icon-size')
+        ) {
+            this.adjustedIconSize = layer.getLayoutValue('icon-size', {zoom: this.zoom + 1});
+        }
+        if (!layer.isLayoutValueZoomConstant('icon-size')) {
+            this.iconSizeCoveringZoomStops = this.layers[0].getLayoutValueCoveringZoomStops('icon-size', this.zoom, this.zoom + 1);
+        }
 
         const layout = this.layers[0].layout;
 
@@ -367,13 +419,21 @@ class SymbolBucket {
     }
 
     addFeature(feature, shapedTextOrientations, shapedIcon) {
+        // To reduce the number of labels that jump around when zooming we need
+        // to use a text-size value that is the same for all zoom levels.
+        // This calculates text-size at a high zoom level so that all tiles can
+        // use the same value when calculating anchor positions.
+        const adjustedTextSize = this.layers[0].getLayoutValue('text-size', {zoom: this.zoom + 1}, feature.properties);
+        const adjustedIconSize = this.layers[0].getLayoutValue('icon-size', {zoom: this.zoom + 1}, feature.properties);
+        const adjustedTextMaxSize = this.layers[0].getLayoutValue('text-size', {zoom: 18}, feature.properties);
+
         const layout = this.layers[0].layout,
             glyphSize = 24,
-            fontScale = this.adjustedTextSize / glyphSize,
-            textMaxSize = this.adjustedTextMaxSize !== undefined ? this.adjustedTextMaxSize : this.adjustedTextSize,
+            fontScale = adjustedTextSize / glyphSize,
+            textMaxSize = adjustedTextMaxSize !== undefined ? adjustedTextMaxSize : adjustedTextSize,
             textBoxScale = this.tilePixelRatio * fontScale,
             textMaxBoxScale = this.tilePixelRatio * textMaxSize / glyphSize,
-            iconBoxScale = this.tilePixelRatio * this.adjustedIconSize,
+            iconBoxScale = this.tilePixelRatio * adjustedIconSize,
             symbolMinDistance = this.tilePixelRatio * layout['symbol-spacing'],
             avoidEdges = layout['symbol-avoid-edges'],
             textPadding = layout['text-padding'] * this.tilePixelRatio,
@@ -403,8 +463,9 @@ class SymbolBucket {
             const addToBuffers = inside || mayOverlap;
             this.addSymbolInstance(anchor, line, shapedTextOrientations, shapedIcon, this.layers[0],
                 addToBuffers, this.collisionBoxArray, feature.index, feature.sourceLayerIndex, this.index,
-                textBoxScale, textPadding, textAlongLine,
-                iconBoxScale, iconPadding, iconAlongLine, {zoom: this.zoom}, feature.properties);
+                adjustedTextSize, textBoxScale, textPadding, textAlongLine,
+                adjustedIconSize, iconBoxScale, iconPadding, iconAlongLine,
+                {zoom: this.zoom}, feature.properties);
         };
 
         if (symbolPlacement === 'line') {
@@ -544,14 +605,14 @@ class SymbolBucket {
             if (hasText) {
                 collisionTile.insertCollisionFeature(textCollisionFeature, glyphScale, layout['text-ignore-placement']);
                 if (glyphScale <= maxScale) {
-                    this.addSymbols(this.arrays.glyph, symbolInstance.glyphQuads, glyphScale, layout['text-keep-upright'], textAlongLine, collisionTile.angle, symbolInstance.featureProperties, symbolInstance.writingModes);
+                    this.addSymbols(this.arrays.glyph, symbolInstance.glyphQuads, glyphScale, symbolInstance.textSizeData, layout['text-keep-upright'], textAlongLine, collisionTile.angle, symbolInstance.featureProperties, symbolInstance.writingModes);
                 }
             }
 
             if (hasIcon) {
                 collisionTile.insertCollisionFeature(iconCollisionFeature, iconScale, layout['icon-ignore-placement']);
                 if (iconScale <= maxScale) {
-                    this.addSymbols(this.arrays.icon, symbolInstance.iconQuads, iconScale, layout['icon-keep-upright'], iconAlongLine, collisionTile.angle, symbolInstance.featureProperties);
+                    this.addSymbols(this.arrays.icon, symbolInstance.iconQuads, iconScale, symbolInstance.iconSizeData, layout['icon-keep-upright'], iconAlongLine, collisionTile.angle, symbolInstance.featureProperties);
                 }
             }
 
@@ -560,7 +621,7 @@ class SymbolBucket {
         if (showCollisionBoxes) this.addToDebugBuffers(collisionTile);
     }
 
-    addSymbols(arrays, quads, scale, keepUpright, alongLine, placementAngle, featureProperties, writingModes) {
+    addSymbols(arrays, quads, scale, sizeData, keepUpright, alongLine, placementAngle, featureProperties, writingModes) {
         const elementArray = arrays.elementArray;
         const layoutVertexArray = arrays.layoutVertexArray;
 
@@ -597,10 +658,10 @@ class SymbolBucket {
             const segment = arrays.prepareSegment(4);
             const index = segment.vertexLength;
 
-            addVertex(layoutVertexArray, anchorPoint.x, anchorPoint.y, tl.x, tl.y, tex.x, tex.y, minZoom, maxZoom, placementZoom, glyphAngle);
-            addVertex(layoutVertexArray, anchorPoint.x, anchorPoint.y, tr.x, tr.y, tex.x + tex.w, tex.y, minZoom, maxZoom, placementZoom, glyphAngle);
-            addVertex(layoutVertexArray, anchorPoint.x, anchorPoint.y, bl.x, bl.y, tex.x, tex.y + tex.h, minZoom, maxZoom, placementZoom, glyphAngle);
-            addVertex(layoutVertexArray, anchorPoint.x, anchorPoint.y, br.x, br.y, tex.x + tex.w, tex.y + tex.h, minZoom, maxZoom, placementZoom, glyphAngle);
+            addVertex(layoutVertexArray, anchorPoint.x, anchorPoint.y, tl.x, tl.y, tex.x, tex.y, sizeData, minZoom, maxZoom, placementZoom, glyphAngle);
+            addVertex(layoutVertexArray, anchorPoint.x, anchorPoint.y, tr.x, tr.y, tex.x + tex.w, tex.y, sizeData, minZoom, maxZoom, placementZoom, glyphAngle);
+            addVertex(layoutVertexArray, anchorPoint.x, anchorPoint.y, bl.x, bl.y, tex.x, tex.y + tex.h, sizeData, minZoom, maxZoom, placementZoom, glyphAngle);
+            addVertex(layoutVertexArray, anchorPoint.x, anchorPoint.y, br.x, br.y, tex.x + tex.w, tex.y + tex.h, sizeData, minZoom, maxZoom, placementZoom, glyphAngle);
 
             elementArray.emplaceBack(index, index + 1, index + 2);
             elementArray.emplaceBack(index + 1, index + 2, index + 3);
@@ -661,8 +722,8 @@ class SymbolBucket {
     }
 
     addSymbolInstance(anchor, line, shapedTextOrientations, shapedIcon, layer, addToBuffers, collisionBoxArray, featureIndex, sourceLayerIndex, bucketIndex,
-        textBoxScale, textPadding, textAlongLine,
-        iconBoxScale, iconPadding, iconAlongLine, globalProperties, featureProperties) {
+        adjustedTextSize, textBoxScale, textPadding, textAlongLine,
+        adjustedIconSize, iconBoxScale, iconPadding, iconAlongLine, globalProperties, featureProperties) {
 
         let textCollisionFeature, iconCollisionFeature;
         let iconQuads = [];
@@ -693,6 +754,9 @@ class SymbolBucket {
             (shapedTextOrientations[WritingMode.horizontal] ? WritingMode.horizontal : 0)
         );
 
+        const textSizeData = getSizeAttributeData(layer, this.zoom, this.textSizeCoveringZoomStops, 'text-size', featureProperties);
+        const iconSizeData = getSizeAttributeData(layer, this.zoom, this.iconSizeCoveringZoomStops, 'icon-size', featureProperties);
+
         this.symbolInstances.push({
             textBoxStartIndex,
             textBoxEndIndex,
@@ -700,12 +764,29 @@ class SymbolBucket {
             iconBoxEndIndex,
             glyphQuads,
             iconQuads,
+            textSizeData,
+            iconSizeData,
             anchor,
             featureIndex,
             featureProperties,
             writingModes
         });
     }
+}
+
+function getSizeAttributeData(layer, tileZoom, stopZoomLevels, sizeProperty, featureProperties) {
+    if (layer.isLayoutValueSourceFunction(sizeProperty)) {
+        return [
+            10 * layer.getLayoutValue(sizeProperty, {}, featureProperties)
+        ];
+    } else if (layer.isLayoutValueCompositeFunction(sizeProperty)) {
+        return [
+            10 * layer.getLayoutValue(sizeProperty, {zoom: stopZoomLevels[0]}, featureProperties),
+            10 * layer.getLayoutValue(sizeProperty, {zoom: stopZoomLevels[1]}, featureProperties),
+            10 * layer.getLayoutValue(sizeProperty, {zoom: 1 + tileZoom}, featureProperties)
+        ];
+    }
+    return null;
 }
 
 SymbolBucket.programInterfaces = symbolInterfaces;
