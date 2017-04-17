@@ -6,6 +6,7 @@ const DOM = require('../util/dom');
 const LngLat = require('../geo/lng_lat');
 const Point = require('point-geometry');
 const window = require('../util/window');
+const smartWrap = require('../util/smart_wrap');
 
 const defaultOptions = {
     closeButton: true,
@@ -57,7 +58,7 @@ class Popup extends Evented {
         super();
         this.options = util.extend(Object.create(defaultOptions), options);
         util.bindAll([
-            '_update',
+            '_onMove',
             '_onClickClose'],
             this);
     }
@@ -70,11 +71,11 @@ class Popup extends Evented {
      */
     addTo(map) {
         this._map = map;
-        this._map.on('move', this._update);
+        this._map.on('move', this._onMove);
         if (this.options.closeOnClick) {
             this._map.on('click', this._onClickClose);
         }
-        this._update();
+        this._update(false);
         return this;
     }
 
@@ -104,7 +105,7 @@ class Popup extends Evented {
         }
 
         if (this._map) {
-            this._map.off('move', this._update);
+            this._map.off('move', this._onMove);
             this._map.off('click', this._onClickClose);
             delete this._map;
         }
@@ -140,7 +141,8 @@ class Popup extends Evented {
      */
     setLngLat(lnglat) {
         this._lngLat = LngLat.convert(lnglat);
-        this._update();
+        this._wrappedLnLat = null;
+        this._update(false);
         return this;
     }
 
@@ -204,7 +206,7 @@ class Popup extends Evented {
     setDOMContent(htmlNode) {
         this._createContent();
         this._content.appendChild(htmlNode);
-        this._update();
+        this._update(false);
         return this;
     }
 
@@ -223,7 +225,11 @@ class Popup extends Evented {
         }
     }
 
-    _update() {
+    _onMove() {
+        this._update(true);
+    }
+
+    _update(wrap) {
         if (!this._map || !this._lngLat || !this._content) { return; }
 
         if (!this._container) {
@@ -232,25 +238,34 @@ class Popup extends Evented {
             this._container.appendChild(this._content);
         }
 
+        if (!this._wrappedLnLat) {
+            this._wrappedLnLat = this._lngLat;
+        }
+
+        if (wrap && this._map.transform.renderWorldCopies) {
+            this._wrappedLnLat = smartWrap(this._wrappedLnLat, this._pos, this._map.transform);
+        }
+
+        this._pos = this._map.project(this._wrappedLnLat);
+
         let anchor = this.options.anchor;
         const offset = normalizeOffset(this.options.offset);
-        const pos = this._map.project(this._map.transform.renderWorldCopies ? this._lngLat.wrapToBestWorld(this._map.getCenter()) : this._lngLat).round();
 
         if (!anchor) {
             const width = this._container.offsetWidth,
                 height = this._container.offsetHeight;
 
-            if (pos.y + offset.bottom.y < height) {
+            if (this._pos.y + offset.bottom.y < height) {
                 anchor = ['top'];
-            } else if (pos.y > this._map.transform.height - height) {
+            } else if (this._pos.y > this._map.transform.height - height) {
                 anchor = ['bottom'];
             } else {
                 anchor = [];
             }
 
-            if (pos.x < width / 2) {
+            if (this._pos.x < width / 2) {
                 anchor.push('left');
-            } else if (pos.x > this._map.transform.width - width / 2) {
+            } else if (this._pos.x > this._map.transform.width - width / 2) {
                 anchor.push('right');
             }
 
@@ -261,7 +276,7 @@ class Popup extends Evented {
             }
         }
 
-        const offsetedPos = pos.add(offset[anchor]);
+        const offsetedPos = this._pos.add(offset[anchor]).round();
 
         const anchorTranslate = {
             'top': 'translate(-50%,0)',

@@ -1,8 +1,10 @@
 'use strict';
 
+const util = require('../util/util');
 const DOM = require('../util/dom');
 const LngLat = require('../geo/lng_lat');
 const Point = require('point-geometry');
+const smartWrap = require('../util/smart_wrap');
 
 /**
  * Creates a marker component
@@ -20,8 +22,11 @@ class Marker {
     constructor(element, options) {
         this._offset = Point.convert(options && options.offset || [0, 0]);
 
-        this._update = this._update.bind(this);
-        this._onMapClick = this._onMapClick.bind(this);
+        util.bindAll([
+            '_onMove',
+            '_onMoveend',
+            '_onMapClick'],
+            this);
 
         if (!element) element = DOM.create('div');
         element.classList.add('mapboxgl-marker');
@@ -39,9 +44,9 @@ class Marker {
         this.remove();
         this._map = map;
         map.getCanvasContainer().appendChild(this._element);
-        map.on('move', this._update);
-        map.on('moveend', this._update);
-        this._update();
+        map.on('move', this._onMove);
+        map.on('moveend', this._onMoveend);
+        this._update({wrap: false, round: true});
 
         // If we attached the `click` listener to the marker element, the popup
         // would close once the event propogated to `map` due to the
@@ -61,8 +66,8 @@ class Marker {
     remove() {
         if (this._map) {
             this._map.off('click', this._onMapClick);
-            this._map.off('move', this._update);
-            this._map.off('moveend', this._update);
+            this._map.off('move', this._onMove);
+            this._map.off('moveend', this._onMoveend);
             this._map = null;
         }
         DOM.remove(this._element);
@@ -85,8 +90,9 @@ class Marker {
      */
     setLngLat(lnglat) {
         this._lngLat = LngLat.convert(lnglat);
+        this._wrappedLnLat = null;
         if (this._popup) this._popup.setLngLat(this._lngLat);
-        this._update();
+        this._update({wrap: false, round: true});
         return this;
     }
 
@@ -144,14 +150,36 @@ class Marker {
         else popup.addTo(this._map);
     }
 
-    _update(e) {
+    _onMove() {
+        this._update({wrap: true, round: false});
+    }
+
+    _onMoveend() {
+        this._update({wrap: true, round: true});
+    }
+
+    _update(options) {
         if (!this._map) return;
-        let pos = this._map.project(this._map.transform.renderWorldCopies ? this._lngLat.wrapToBestWorld(this._map.getCenter()) : this._lngLat)._add(this._offset);
-        // because rouding the coordinates at every `move` event causes stuttered zooming
+
+        if (!this._wrappedLnLat) {
+            this._wrappedLnLat = this._lngLat;
+        }
+
+        if (options.wrap && this._map.transform.renderWorldCopies) {
+            this._wrappedLnLat = smartWrap(this._wrappedLnLat, this._pos, this._map.transform);
+        }
+
+        this._pos = this._map.project(this._wrappedLnLat)
+            ._add(this._offset);
+
+        // because rounding the coordinates at every `move` event causes stuttered zooming
         // we only round them when _update is called with `moveend` or when its called with
         // no arguments (when the Marker is initialized or Marker#setLngLat is invoked).
-        if (!e || e.type === "moveend") pos = pos.round();
-        DOM.setTransform(this._element, `translate(${pos.x}px, ${pos.y}px)`);
+        if (options.round) {
+            this._pos = this._pos.round();
+        }
+
+        DOM.setTransform(this._element, `translate(${this._pos.x}px, ${this._pos.y}px)`);
     }
 }
 
