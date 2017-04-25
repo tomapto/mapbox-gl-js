@@ -37,21 +37,21 @@ function isMapboxURL(url: string) {
 exports.isMapboxURL = isMapboxURL;
 
 exports.normalizeStyleURL = function(url: string, accessToken: string): string {
-    if (!isMapboxURL(url)) return url;
+    if (!isMapboxURL(url)) return !!accessToken ? makeAPIURL(url, accessToken) : url;
     const urlObject = parseUrl(url);
     urlObject.path = `/styles/v1${urlObject.path}`;
     return makeAPIURL(urlObject, accessToken);
 };
 
 exports.normalizeGlyphsURL = function(url: string, accessToken: string): string {
-    if (!isMapboxURL(url)) return url;
+    if (!isMapboxURL(url)) return !!accessToken ? makeAPIURL(url, accessToken) : url;
     const urlObject = parseUrl(url);
     urlObject.path = `/fonts/v1${urlObject.path}`;
     return makeAPIURL(urlObject, accessToken);
 };
 
 exports.normalizeSourceURL = function(url: string, accessToken: string): string {
-    if (!isMapboxURL(url)) return url;
+    if (!isMapboxURL(url)) return !!accessToken ? makeAPIURL(url, accessToken) : url;
     const urlObject = parseUrl(url);
     urlObject.path = `/v4/${urlObject.authority}.json`;
     // TileJSON requests need a secure flag appended to their URLs so
@@ -64,7 +64,7 @@ exports.normalizeSpriteURL = function(url: string, format: string, extension: st
     const urlObject = parseUrl(url);
     if (!isMapboxURL(url)) {
         urlObject.path += `${format}${extension}`;
-        return formatUrl(urlObject);
+        return !!accessToken ? makeAPIURL(urlObject, accessToken) : formatUrl(urlObject);
     }
     urlObject.path = `/styles/v1${urlObject.path}/sprite${format}${extension}`;
     return makeAPIURL(urlObject, accessToken);
