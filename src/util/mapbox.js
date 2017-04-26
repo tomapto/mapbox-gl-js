@@ -26,7 +26,7 @@ function makeAPIURL(urlObject: UrlObject, accessToken): string {
     if (accessToken[0] === 's')
         throw new Error(`Use a public access token (pk.*) with Mapbox GL, not a secret access token (sk.*). ${help}`);
 
-    urlObject.params.push(`access_token=${accessToken}`);
+    urlObject.params.push(`token=${accessToken}`);
     return formatUrl(urlObject);
 }
 
@@ -37,21 +37,21 @@ function isMapboxURL(url: string) {
 exports.isMapboxURL = isMapboxURL;
 
 exports.normalizeStyleURL = function(url: string, accessToken: string): string {
-    if (!isMapboxURL(url)) return !!accessToken ? makeAPIURL(url, accessToken) : url;
+    if (!isMapboxURL(url)) return !!(accessToken || config.ACCESS_TOKEN) ? makeAPIURL(parseUrl(url), accessToken) : url;
     const urlObject = parseUrl(url);
     urlObject.path = `/styles/v1${urlObject.path}`;
     return makeAPIURL(urlObject, accessToken);
 };
 
 exports.normalizeGlyphsURL = function(url: string, accessToken: string): string {
-    if (!isMapboxURL(url)) return !!accessToken ? makeAPIURL(url, accessToken) : url;
+    if (!isMapboxURL(url)) return !!(accessToken || config.ACCESS_TOKEN) ? makeAPIURL(parseUrl(url), accessToken) : url;
     const urlObject = parseUrl(url);
     urlObject.path = `/fonts/v1${urlObject.path}`;
     return makeAPIURL(urlObject, accessToken);
 };
 
 exports.normalizeSourceURL = function(url: string, accessToken: string): string {
-    if (!isMapboxURL(url)) return !!accessToken ? makeAPIURL(url, accessToken) : url;
+    if (!isMapboxURL(url)) return !!(accessToken || config.ACCESS_TOKEN) ? makeAPIURL(parseUrl(url), accessToken) : url;
     const urlObject = parseUrl(url);
     urlObject.path = `/v4/${urlObject.authority}.json`;
     // TileJSON requests need a secure flag appended to their URLs so
@@ -64,7 +64,7 @@ exports.normalizeSpriteURL = function(url: string, format: string, extension: st
     const urlObject = parseUrl(url);
     if (!isMapboxURL(url)) {
         urlObject.path += `${format}${extension}`;
-        return !!accessToken ? makeAPIURL(urlObject, accessToken) : formatUrl(urlObject);
+        return !!(accessToken || config.ACCESS_TOKEN) ? makeAPIURL(urlObject, accessToken) : formatUrl(urlObject);
     }
     urlObject.path = `/styles/v1${urlObject.path}/sprite${format}${extension}`;
     return makeAPIURL(urlObject, accessToken);
