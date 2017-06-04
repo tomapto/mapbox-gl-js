@@ -14,17 +14,17 @@ type UrlObject = {|
 |};
 
 function makeAPIURL(urlObject: UrlObject, accessToken): string {
-    const apiUrlObject = parseUrl(config.API_URL);
+    /*const apiUrlObject = parseUrl(config.API_URL);
     urlObject.protocol = apiUrlObject.protocol;
-    urlObject.authority = apiUrlObject.authority;
+    urlObject.authority = apiUrlObject.authority;*/
 
     if (!config.REQUIRE_ACCESS_TOKEN) return formatUrl(urlObject);
 
     accessToken = accessToken || config.ACCESS_TOKEN;
-    if (!accessToken)
+   /* if (!accessToken)
         throw new Error(`An API access token is required to use Mapbox GL. ${help}`);
     if (accessToken[0] === 's')
-        throw new Error(`Use a public access token (pk.*) with Mapbox GL, not a secret access token (sk.*). ${help}`);
+        throw new Error(`Use a public access token (pk.*) with Mapbox GL, not a secret access token (sk.*). ${help}`);*/
 
     urlObject.params.push(`token=${accessToken}`);
     return formatUrl(urlObject);
@@ -35,6 +35,17 @@ function isMapboxURL(url: string) {
 }
 
 exports.isMapboxURL = isMapboxURL;
+
+function normalizeURL(url:string,accessToken:string):string{
+    accessToken = accessToken || config.ACCESS_TOKEN;
+    if (accessToken){
+        url += url.indexOf('?') !== -1 ? '&token=' : '?token=';
+        return url + accessToken;
+    }else {
+        return url;
+    }
+
+}
 
 exports.normalizeStyleURL = function(url: string, accessToken: string): string {
     if (!isMapboxURL(url)) return !!(accessToken || config.ACCESS_TOKEN) ? makeAPIURL(parseUrl(url), accessToken) : url;
