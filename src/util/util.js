@@ -1,9 +1,13 @@
-'use strict';
 // @flow
 
 const UnitBezier = require('@mapbox/unitbezier');
 const Coordinate = require('../geo/coordinate');
 const Point = require('point-geometry');
+
+/**
+ * @module util
+ * @private
+ */
 
 /**
  * Given a value `t` that varies between 0 and 1, return
@@ -139,13 +143,11 @@ exports.keysDifference = function (obj: {[key: string]: mixed}, other: {[key: st
  * source objects.
  *
  * @param dest destination object
- * @param {...Object} sources sources from which properties are pulled
+ * @param sources sources from which properties are pulled
  * @private
  */
-// eslint-disable-next-line no-unused-vars
-exports.extend = function (dest: Object, source0: Object, source1?: Object, source2?: Object): Object {
-    for (let i = 1; i < arguments.length; i++) {
-        const src = arguments[i];
+exports.extend = function (dest: Object, ...sources: Array<Object>): Object {
+    for (const src of sources) {
         for (const k in src) {
             dest[k] = src[k];
         }

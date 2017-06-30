@@ -1,4 +1,3 @@
-'use strict';
 
 const util = require('../util/util');
 const interpolate = require('../style-spec/util/interpolate');
@@ -316,7 +315,7 @@ class Camera extends Evented {
      * @param {boolean} [options.linear=false] If `true`, the map transitions using
      *     {@link Map#easeTo}. If `false`, the map transitions using {@link Map#flyTo}. See
      *     those functions and {@link AnimationOptions} for information about options available.
-     * @param {Function} [options.easing] An easing function for the animated transition. See [AnimationOptions](#AnimationOptions).
+     * @param {Function} [options.easing] An easing function for the animated transition. See {@link AnimationOptions}.
      * @param {PointLike} [options.offset=[0, 0]] The center of the given bounds relative to the map's center, measured in pixels.
      * @param {number} [options.maxZoom] The maximum zoom level to allow when the map view transitions to the specified bounds.
      * @param {Object} [eventData] Additional properties to be added to event objects of events triggered by this method.
@@ -470,7 +469,7 @@ class Camera extends Evented {
      *
      * @memberof Map#
      * @param {Object} options Options describing the destination and animation of the transition.
-    *            Accepts [CameraOptions](#CameraOptions) and [AnimationOptions](#AnimationOptions).
+    *            Accepts {@link CameraOptions} and {@link AnimationOptions}.
      * @param {Object} [eventData] Additional properties to be added to event objects of events triggered by this method.
      * @fires movestart
      * @fires zoomstart
@@ -620,7 +619,7 @@ class Camera extends Evented {
      *
      * @memberof Map#
      * @param {Object} options Options describing the destination and animation of the transition.
-     *     Accepts [CameraOptions](#CameraOptions), [AnimationOptions](#AnimationOptions),
+     *     Accepts {@link CameraOptions}, {@link AnimationOptions},
      *     and the following additional options.
      * @param {number} [options.curve=1.42] The zooming "curve" that will occur along the
      *     flight path. A high value maximizes zooming for an exaggerated animation, while a low
@@ -689,7 +688,7 @@ class Camera extends Evented {
             startBearing = this.getBearing(),
             startPitch = this.getPitch();
 
-        const zoom = 'zoom' in options ?  +options.zoom : startZoom;
+        const zoom = 'zoom' in options ? util.clamp(+options.zoom, tr.minZoom, tr.maxZoom) : startZoom;
         const bearing = 'bearing' in options ? this._normalizeBearing(options.bearing, startBearing) : startBearing;
         const pitch = 'pitch' in options ? +options.pitch : startPitch;
 
@@ -758,7 +757,7 @@ class Camera extends Evented {
             S = (r(1) - r0) / rho;
 
         // When u₀ = u₁, the optimal path doesn’t require both ascent and descent.
-        if (Math.abs(u1) < 0.000001) {
+        if (Math.abs(u1) < 0.000001 || isNaN(S)) {
             // Perform a more or less instantaneous transition if the path is too short.
             if (Math.abs(w0 - w1) < 0.000001) return this.easeTo(options, eventData);
 
@@ -901,7 +900,7 @@ class Camera extends Evented {
 
 /**
  * Fired whenever the map's pitch (tilt) begins a change as
- * the result of either user interaction or methods such as [Map#flyTo](#Map#flyTo).
+ * the result of either user interaction or methods such as {@link Map#flyTo} .
  *
  * @event pitchstart
  * @memberof Map
@@ -911,7 +910,7 @@ class Camera extends Evented {
 
 /**
  * Fired whenever the map's pitch (tilt) changes as.
- * the result of either user interaction or methods such as [Map#flyTo](#Map#flyTo).
+ * the result of either user interaction or methods such as {@link Map#flyTo}.
  *
  * @event pitch
  * @memberof Map
@@ -921,7 +920,7 @@ class Camera extends Evented {
 
 /**
  * Fired immediately after the map's pitch (tilt) finishes changing as
- * the result of either user interaction or methods such as [Map#flyTo](#Map#flyTo).
+ * the result of either user interaction or methods such as {@link Map#flyTo}.
  *
  * @event pitchend
  * @memberof Map

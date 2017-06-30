@@ -1,4 +1,3 @@
-'use strict';
 
 const DOM = require('../../util/dom');
 const LngLatBounds = require('../../geo/lng_lat_bounds');
@@ -167,7 +166,7 @@ module.exports = BoxZoomHandler;
  */
 
 /**
- * Fired when a "box zoom" interaction starts. See [`BoxZoomHandler`](#BoxZoomHandler).
+ * Fired when a "box zoom" interaction starts. See {@link BoxZoomHandler}.
  *
  * @event boxzoomstart
  * @memberof Map
@@ -176,7 +175,7 @@ module.exports = BoxZoomHandler;
  */
 
 /**
- * Fired when a "box zoom" interaction ends.  See [`BoxZoomHandler`](#BoxZoomHandler).
+ * Fired when a "box zoom" interaction ends.  See {@link BoxZoomHandler}.
  *
  * @event boxzoomend
  * @memberof Map
@@ -187,7 +186,7 @@ module.exports = BoxZoomHandler;
 
 /**
  * Fired when the user cancels a "box zoom" interaction, or when the bounding box does not meet the minimum size threshold.
- * See [`BoxZoomHandler`](#BoxZoomHandler).
+ * See {@link BoxZoomHandler}.
  *
  * @event boxzoomcancel
  * @memberof Map

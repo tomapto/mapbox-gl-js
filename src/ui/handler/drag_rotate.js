@@ -1,4 +1,3 @@
-'use strict';
 
 const DOM = require('../../util/dom');
 const util = require('../../util/util');
@@ -237,7 +236,7 @@ class DragRotateHandler {
 module.exports = DragRotateHandler;
 
 /**
- * Fired when a "drag to rotate" interaction starts. See [`DragRotateHandler`](#DragRotateHandler).
+ * Fired when a "drag to rotate" interaction starts. See {@link DragRotateHandler}.
  *
  * @event rotatestart
  * @memberof Map
@@ -246,7 +245,7 @@ module.exports = DragRotateHandler;
  */
 
 /**
- * Fired repeatedly during a "drag to rotate" interaction. See [`DragRotateHandler`](#DragRotateHandler).
+ * Fired repeatedly during a "drag to rotate" interaction. See {@link DragRotateHandler}.
  *
  * @event rotate
  * @memberof Map
@@ -255,7 +254,7 @@ module.exports = DragRotateHandler;
  */
 
 /**
- * Fired when a "drag to rotate" interaction ends. See [`DragRotateHandler`](#DragRotateHandler).
+ * Fired when a "drag to rotate" interaction ends. See {@link DragRotateHandler}.
  *
  * @event rotateend
  * @memberof Map

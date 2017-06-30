@@ -1,8 +1,58 @@
-'use strict';
+// @flow
 
 const assert = require('assert');
 const createVertexArrayType = require('./vertex_array_type');
 const util = require('../util/util');
+
+import type StyleLayer from '../style/style_layer';
+
+type Attribute = {
+    name: string,
+    property: string,
+    components: number,
+    multiplier: number,
+    dimensions: number,
+    zoomStops: Array<number>,
+    useIntegerZoom: boolean
+}
+
+type Uniform = {
+    name: string,
+    property: string
+}
+
+type InterpolationUniform = {
+    name: string,
+    property: string,
+    stopOffset: number,
+    useIntegerZoom: boolean
+}
+
+type Pragmas = {
+    define: Array<string>,
+    initialize: Array<string>,
+    vertex: {
+        define: Array<string>,
+        initialize: Array<string>,
+    },
+    fragment: {
+        define: Array<string>,
+        initialize: Array<string>,
+    }
+}
+
+type PaintPropertyStatistics = {
+    [property: string]: { max: number }
+}
+
+type ProgramInterface = {
+    layoutAttributes?: Array<Attribute>,
+    paintAttributes?: Array<Attribute>
+}
+
+export type Program = {
+    [string]: any
+}
 
 /**
  * ProgramConfiguration contains the logic for binding style layer properties and tile
@@ -25,19 +75,27 @@ const util = require('../util/util');
  * @private
  */
 class ProgramConfiguration {
+    attributes: Array<Attribute>;
+    uniforms: Array<Uniform>;
+    interpolationUniforms: Array<InterpolationUniform>;
+    pragmas: { [string]: Pragmas };
+    cacheKey: string;
+    interface: ProgramInterface;
+    PaintVertexArray: any;
 
     constructor() {
         this.attributes = [];
         this.uniforms = [];
         this.interpolationUniforms = [];
-        this.pragmas = {vertex: {}, fragment: {}};
+        this.pragmas = {};
         this.cacheKey = '';
+        this.interface = {};
     }
 
-    static createDynamic(attributes, layer, zoom) {
+    static createDynamic(programInterface: ProgramInterface, layer: StyleLayer, zoom: number) {
         const self = new ProgramConfiguration();
 
-        for (const attributeConfig of attributes) {
+        for (const attributeConfig of programInterface.paintAttributes || []) {
             const attribute = normalizePaintAttribute(attributeConfig, layer);
             assert(/^a_/.test(attribute.name));
             const name = attribute.name.slice(2);
@@ -51,20 +109,22 @@ class ProgramConfiguration {
             }
         }
         self.PaintVertexArray = createVertexArrayType(self.attributes);
+        self.interface = programInterface;
 
         return self;
     }
 
-    static createStatic(uniformNames) {
+    static createStatic(uniformNames: Array<string>) {
         const self = new ProgramConfiguration();
 
         for (const name of uniformNames) {
             self.addUniform(name, `u_${name}`);
         }
+
         return self;
     }
 
-    addUniform(name, inputName) {
+    addUniform(name: string, inputName: string) {
         const pragmas = this.getPragmas(name);
 
         pragmas.define.push(`uniform {precision} {type} ${inputName};`);
@@ -73,12 +133,12 @@ class ProgramConfiguration {
         this.cacheKey += `/u_${name}`;
     }
 
-    addZoomAttribute(name, attribute) {
+    addZoomAttribute(name: string, attribute: Attribute) {
         this.uniforms.push(attribute);
         this.addUniform(name, attribute.name);
     }
 
-    addPropertyAttribute(name, attribute) {
+    addPropertyAttribute(name: string, attribute: Attribute) {
         const pragmas = this.getPragmas(name);
 
         this.attributes.push(attribute);
@@ -114,7 +174,7 @@ class ProgramConfiguration {
      *
      * @private
      */
-    addZoomAndPropertyAttribute(name, attribute, layer, zoom) {
+    addZoomAndPropertyAttribute(name: string, attribute: Attribute, layer: StyleLayer, zoom: number) {
         const pragmas = this.getPragmas(name);
 
         pragmas.define.push(`varying {precision} {type} ${name};`);
@@ -135,6 +195,7 @@ class ProgramConfiguration {
         this.interpolationUniforms.push({
             name: tName,
             property: attribute.property,
+            useIntegerZoom: attribute.useIntegerZoom,
             stopOffset
         });
 
@@ -172,16 +233,25 @@ class ProgramConfiguration {
         this.cacheKey += `/z_${name}`;
     }
 
-    getPragmas(name) {
+    getPragmas(name: string) {
         if (!this.pragmas[name]) {
-            this.pragmas[name]          = {define: [], initialize: []};
-            this.pragmas[name].fragment = {define: [], initialize: []};
-            this.pragmas[name].vertex   = {define: [], initialize: []};
+            this.pragmas[name] = {
+                define: [],
+                initialize: [],
+                fragment: {
+                    define: [],
+                    initialize: []
+                },
+                vertex: {
+                    define: [],
+                    initialize: []
+                }
+            };
         }
         return this.pragmas[name];
     }
 
-    applyPragmas(source, shaderType) {
+    applyPragmas(source: string, shaderType: 'vertex' | 'fragment') {
         return source.replace(/#pragma mapbox: ([\w]+) ([\w]+) ([\w]+) ([\w]+)/g, (match, operation, precision, type, name) => {
             return this.pragmas[name][operation].concat(this.pragmas[name][shaderType][operation])
                 .join('\n')
@@ -194,7 +264,7 @@ class ProgramConfiguration {
     // is helpful to initialize it ahead of time to avoid recalculating
     // 'hidden class' optimizations to take effect
     createPaintPropertyStatistics() {
-        const paintPropertyStatistics = {};
+        const paintPropertyStatistics: PaintPropertyStatistics = {};
         for (const attribute of this.attributes) {
             if (attribute.dimensions !== 1) continue;
             paintPropertyStatistics[attribute.property] = {
@@ -204,12 +274,13 @@ class ProgramConfiguration {
         return paintPropertyStatistics;
     }
 
-    populatePaintArray(layer, paintArray, paintPropertyStatistics, length, globalProperties, featureProperties) {
+    populatePaintArray(layer: StyleLayer, paintArray: any, paintPropertyStatistics: PaintPropertyStatistics, length: number, globalProperties: { zoom: number }, featureProperties: Object) {
         const start = paintArray.length;
         paintArray.resize(length);
 
         for (const attribute of this.attributes) {
-            const value = getPaintAttributeValue(attribute, layer, globalProperties, featureProperties);
+            const zoomBase = attribute.useIntegerZoom ? { zoom: Math.floor(globalProperties.zoom) } : globalProperties;
+            const value: any = getPaintAttributeValue(attribute, layer, zoomBase, featureProperties);
 
             for (let i = start; i < length; i++) {
                 const vertex = paintArray.get(i);
@@ -229,9 +300,11 @@ class ProgramConfiguration {
         }
     }
 
-    setUniforms(gl, program, layer, globalProperties) {
+    setUniforms(gl: WebGLRenderingContext, program: Program, layer: StyleLayer, globalProperties: { zoom: number }) {
         for (const uniform of this.uniforms) {
-            const value = layer.getPaintValue(uniform.property, globalProperties);
+            const zoomBase = uniform.useIntegerZoom ? { zoom: Math.floor(globalProperties.zoom) } : globalProperties;
+            const value = layer.getPaintValue(uniform.property, zoomBase);
+
             if (uniform.components === 4) {
                 gl.uniform4fv(program[uniform.name], value);
             } else {
@@ -239,9 +312,10 @@ class ProgramConfiguration {
             }
         }
         for (const uniform of this.interpolationUniforms) {
+            const zoomBase = uniform.useIntegerZoom ? { zoom: Math.floor(globalProperties.zoom) } : globalProperties;
             // stopInterp indicates which stops need to be interpolated.
             // If stopInterp is 3.5 then interpolate half way between stops 3 and 4.
-            const stopInterp = layer.getPaintInterpolationT(uniform.property, globalProperties);
+            const stopInterp = layer.getPaintInterpolationT(uniform.property, zoomBase);
             // We can only store four stop values in the buffers. stopOffset is the number of stops that come
             // before the stops that were added to the buffers.
             gl.uniform1f(program[uniform.name], Math.max(0, Math.min(3, stopInterp - uniform.stopOffset)));
@@ -249,7 +323,7 @@ class ProgramConfiguration {
     }
 }
 
-function getPaintAttributeValue(attribute, layer, globalProperties, featureProperties) {
+function getPaintAttributeValue(attribute: Attribute, layer: StyleLayer, globalProperties: { zoom: number }, featureProperties: Object) {
     if (!attribute.zoomStops) {
         return layer.getPaintValue(attribute.property, globalProperties, featureProperties);
     }
@@ -260,7 +334,7 @@ function getPaintAttributeValue(attribute, layer, globalProperties, featurePrope
     return values.length === 1 ? values[0] : values;
 }
 
-function normalizePaintAttribute(attribute, layer) {
+function normalizePaintAttribute(attribute: Attribute, layer: StyleLayer): Attribute {
     let name = attribute.name;
 
     // by default, construct the shader variable name for paint attribute
